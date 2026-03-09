@@ -181,7 +181,7 @@ function MainApp({user,accounts,branches,ingredients,products,
 
   const tabs = isAdmin
     ? [{id:"daily",icon:"📝",label:"Nhập ngày"},{id:"report",icon:"📊",label:"Báo cáo"},{id:"stock",icon:"📦",label:"Tồn kho"},{id:"settings",icon:"⚙️",label:"Cài đặt"}]
-    : [{id:"daily",icon:"📝",label:"Nhập ngày"},{id:"report",icon:"📊",label:"Báo cáo"},{id:"stock",icon:"📦",label:"Tồn kho"}];
+    : [{id:"daily",icon:"📝",label:"Nhập ngày"},{id:"stock",icon:"📦",label:"Tồn kho"}];
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Nunito',sans-serif",color:C.text,paddingBottom:80}}>
@@ -323,6 +323,13 @@ function DailyTab({user,branchId,ingredients,products,getDayData,saveDayData,day
   const chiVH = Object.values(data.vanhanh||{}).reduce((s,v)=>s+toNum(v),0);
   const tongSP = toNum(data.soldQty);
   const doanhThu = tongSP * 15000;
+  const soldCashQty = Math.min(tongSP, Math.max(0, toNum(data.soldCashQty)));
+  const soldTransferQty = Math.max(0, tongSP - soldCashQty);
+  const openingCash = toNum(data.openingCash);
+  const openingBank = toNum(data.openingBank);
+  const currentCash = openingCash + soldCashQty*15000;
+  const currentBank = openingBank + soldTransferQty*15000;
+  const currentTotal = currentCash + currentBank;
   const loiLo = doanhThu - chiNL - chiVH;
 
   const handleSave = async () => {
@@ -342,7 +349,7 @@ function DailyTab({user,branchId,ingredients,products,getDayData,saveDayData,day
 
       <div style={{display:"flex",gap:5,padding:"0 12px"}}>
         <DailySecBtn id="ing" section={section} setSection={setSection} label="🛒 Nguyên liệu" />
-        {isAdmin && <DailySecBtn id="vh" section={section} setSection={setSection} label="⚙️ Vận hành" />}
+        <DailySecBtn id="vh" section={section} setSection={setSection} label="⚙️ Vận hành" />
       </div>
 
       {/* ── NGUYÊN LIỆU ── */}
@@ -401,7 +408,12 @@ function DailyTab({user,branchId,ingredients,products,getDayData,saveDayData,day
                         const val=e.target.value;
                         setIng(x.id,"dungTon",val);
                         if(x.id===breadIngId){
-                          setData(d=>({...d,soldQty:val}));
+                          setData(d=>{
+                            const total=toNum(val);
+                            const transfer=Math.min(toNum(d.soldTransferQty),total);
+                            const cash=Math.max(0,total-transfer);
+                            return {...d,soldQty:val,soldCashQty:String(cash),soldTransferQty:String(transfer)};
+                          });
                         }
                       }}
                       style={inp({padding:"6px 8px",fontSize:12,textAlign:"center"})} />
@@ -431,64 +443,127 @@ function DailyTab({user,branchId,ingredients,products,getDayData,saveDayData,day
               placeholder="Ghi chú..." style={inp()} />
           </div>
           <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
-            <DailyLabel>🥖 Đã bán hôm nay (ổ)</DailyLabel>
-            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center"}}>
-              <input type="text" inputMode="numeric" value={data.soldQty||""} onChange={e=>{
-                const val=e.target.value;
-                setData(d=>{
-                  const next={...d,soldQty:val};
-                  if(!breadIngId) return next;
-                  return {
-                    ...next,
-                    ingredients:{
-                      ...next.ingredients,
-                      [breadIngId]:{
-                        ...(next.ingredients?.[breadIngId]||{}),
-                        dungTon:val,
-                      },
-                    },
-                  };
-                });
-              }}
-                placeholder="Nhập số ổ đã bán" style={inp({padding:"8px 10px",fontSize:14})} />
-              <div style={{fontSize:13,fontWeight:800,color:C.gold}}>= {fmt(doanhThu)}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:10,padding:10}}>
+                <DailyLabel>💰 Số tiền hiện có</DailyLabel>
+                <div style={{display:"grid",gap:6}}>
+                  <div>
+                    <div style={{fontSize:10,color:C.muted,fontWeight:700,marginBottom:3}}>Tiền mặt đầu ngày</div>
+                    <input type="text" inputMode="numeric" value={data.openingCash||""}
+                      onChange={e=>setData(d=>({...d,openingCash:fmtComma(e.target.value)}))}
+                      placeholder="0" style={inp({padding:"6px 8px",fontSize:12,textAlign:"right"})} />
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:C.muted,fontWeight:700,marginBottom:3}}>Chuyển khoản đầu ngày</div>
+                    <input type="text" inputMode="numeric" value={data.openingBank||""}
+                      onChange={e=>setData(d=>({...d,openingBank:fmtComma(e.target.value)}))}
+                      placeholder="0" style={inp({padding:"6px 8px",fontSize:12,textAlign:"right"})} />
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span style={{color:C.muted}}>Tiền mặt hiện có</span><strong>{fmt(currentCash)}</strong></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span style={{color:C.muted}}>Chuyển khoản hiện có</span><strong>{fmt(currentBank)}</strong></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13,paddingTop:4,borderTop:`1px solid ${C.border}`}}><span style={{fontWeight:800}}>Tổng hiện có</span><strong style={{color:C.gold}}>{fmt(currentTotal)}</strong></div>
+                </div>
+              </div>
+
+              <div style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:10,padding:10}}>
+                <DailyLabel>🥖 Bán hôm nay</DailyLabel>
+                <div style={{display:"grid",gap:6}}>
+                  <div>
+                    <div style={{fontSize:10,color:C.muted,fontWeight:700,marginBottom:3}}>Tổng số ổ đã bán</div>
+                    <input type="text" inputMode="numeric" value={data.soldQty||""} onChange={e=>{
+                      const val=e.target.value;
+                      setData(d=>{
+                        const total=toNum(val);
+                        const transfer=Math.min(toNum(d.soldTransferQty),total);
+                        const cash=Math.max(0,total-transfer);
+                        const next={...d,soldQty:val,soldCashQty:String(cash),soldTransferQty:String(transfer)};
+                        if(!breadIngId) return next;
+                        return {
+                          ...next,
+                          ingredients:{
+                            ...next.ingredients,
+                            [breadIngId]:{
+                              ...(next.ingredients?.[breadIngId]||{}),
+                              dungTon:val,
+                            },
+                          },
+                        };
+                      });
+                    }}
+                      placeholder="0" style={inp({padding:"6px 8px",fontSize:12,textAlign:"right"})} />
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:C.muted,fontWeight:700,marginBottom:3}}>Tiền mặt (ổ)</div>
+                    <input type="text" inputMode="numeric" value={data.soldCashQty||""} onChange={e=>{
+                      const cash=Math.max(0,toNum(e.target.value));
+                      setData(d=>{
+                        const total=toNum(d.soldQty);
+                        const safeCash=Math.min(cash,total);
+                        const transfer=Math.max(0,total-safeCash);
+                        return {...d,soldCashQty:String(safeCash),soldTransferQty:String(transfer)};
+                      });
+                    }} placeholder="0" style={inp({padding:"6px 8px",fontSize:12,textAlign:"right"})} />
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:C.muted,fontWeight:700,marginBottom:3}}>Chuyển khoản (ổ)</div>
+                    <input type="text" inputMode="numeric" value={data.soldTransferQty||""} onChange={e=>{
+                      const transfer=Math.max(0,toNum(e.target.value));
+                      setData(d=>{
+                        const total=toNum(d.soldQty);
+                        const safeTransfer=Math.min(transfer,total);
+                        const cash=Math.max(0,total-safeTransfer);
+                        return {...d,soldCashQty:String(cash),soldTransferQty:String(safeTransfer)};
+                      });
+                    }} placeholder="0" style={inp({padding:"6px 8px",fontSize:12,textAlign:"right"})} />
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span style={{color:C.muted}}>DT tiền mặt</span><strong>{fmt(soldCashQty*15000)}</strong></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span style={{color:C.muted}}>DT chuyển khoản</span><strong>{fmt(soldTransferQty*15000)}</strong></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13,paddingTop:4,borderTop:`1px solid ${C.border}`}}><span style={{fontWeight:800}}>Tổng doanh thu</span><strong style={{color:C.gold}}>{fmt(doanhThu)}</strong></div>
+                </div>
+              </div>
             </div>
-            <div style={{fontSize:11,color:C.muted,marginTop:4}}>Doanh thu tính mặc định: số ổ × 15.000đ</div>
           </div>
         </DailyCard>
       )}
 
       {/* ── VẬN HÀNH (admin only) ── */}
-      {section==="vh" && isAdmin && (
+      {section==="vh" && (
         <DailyCard>
+          {!isAdmin && <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Nhân viên không xem/nhập được chi phí vận hành.</div>}
           {[...DEF_VANHANH,...(data.vhExtra||[])].map(v=>(
             <div key={v.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
               <span style={{flex:1,fontSize:13,color:C.text,fontWeight:600}}>{v.label}</span>
               <div style={{width:130}}>
-                <input type="text" inputMode="numeric" value={data.vanhanh[v.id]||""} placeholder="0 đ"
-                  onChange={e=>setVH(v.id,e.target.value)}
-                  style={inp({padding:"8px",textAlign:"center"})} />
+                {isAdmin ? (
+                  <input type="text" inputMode="numeric" value={data.vanhanh[v.id]||""} placeholder="0 đ"
+                    onChange={e=>setVH(v.id,e.target.value)}
+                    style={inp({padding:"8px",textAlign:"center"})} />
+                ) : (
+                  <div style={{...inp({padding:"8px",textAlign:"center",background:"#f3f4f6"})}}>🔒</div>
+                )}
               </div>
             </div>
           ))}
-          <div style={{marginTop:4,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
-            <div style={{fontSize:11,color:C.muted,fontWeight:700,marginBottom:6}}>➕ Thêm khoản chi khác</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <input value={newVhLabel} onChange={e=>setNewVhLabel(e.target.value)} placeholder="VD: Khuyến mãi, hỏng hóc..." style={{...inp({flex:1,minWidth:180,padding:"7px 10px",fontSize:12})}} />
-              <button onClick={()=>{
-                const label=newVhLabel.trim();
-                if(!label) return;
-                const item={id:`vx_${uid()}`,label};
-                setData(d=>({...d,vhExtra:[...(d.vhExtra||[]),item]}));
-                setNewVhLabel("");
-              }} style={{...btn(`linear-gradient(90deg,${C.accent2},${C.accent})`,{padding:"7px 12px",fontSize:12})}}>
-                + Thêm field
-              </button>
+          {isAdmin && (
+            <div style={{marginTop:4,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
+              <div style={{fontSize:11,color:C.muted,fontWeight:700,marginBottom:6}}>➕ Thêm khoản chi khác</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <input value={newVhLabel} onChange={e=>setNewVhLabel(e.target.value)} placeholder="VD: Khuyến mãi, hỏng hóc..." style={{...inp({flex:1,minWidth:180,padding:"7px 10px",fontSize:12})}} />
+                <button onClick={()=>{
+                  const label=newVhLabel.trim();
+                  if(!label) return;
+                  const item={id:`vx_${uid()}`,label};
+                  setData(d=>({...d,vhExtra:[...(d.vhExtra||[]),item]}));
+                  setNewVhLabel("");
+                }} style={{...btn(`linear-gradient(90deg,${C.accent2},${C.accent})`,{padding:"7px 12px",fontSize:12})}}>
+                  + Thêm field
+                </button>
+              </div>
             </div>
-          </div>
+          )}
           <div style={{borderTop:`1px solid ${C.border}`,marginTop:8,paddingTop:10,display:"flex",justifyContent:"space-between"}}>
             <span style={{fontWeight:800,color:C.muted,fontSize:13}}>Tổng chi VH:</span>
-            <span style={{fontWeight:900,color:C.accent,fontSize:15}}>{fmt(chiVH)}</span>
+            <span style={{fontWeight:900,color:C.accent,fontSize:15}}>{isAdmin?fmt(chiVH):"🔒 Chỉ admin"}</span>
           </div>
         </DailyCard>
       )}
@@ -1167,7 +1242,7 @@ export default function Root() {
   const saveIngredients=async i=>{setIngredients(i);await DB.set("sys_ingredients",i);};
   const saveProducts=async p=>{setProducts(p);await DB.set("sys_products",p);};
 
-  const getDayData=async(branchId,date)=>await DB.get(`data_${branchId}_${date}`)||{ingredients:{},products:{},vanhanh:{},ghichu:""};
+  const getDayData=async(branchId,date)=>await DB.get(`data_${branchId}_${date}`)||{ingredients:{},products:{},vanhanh:{},vhExtra:[],ghichu:"",soldQty:"",soldCashQty:"",soldTransferQty:"",openingCash:"",openingBank:""};
   const saveDayData=async(branchId,date,data)=>{
     const key=`data_${branchId}_${date}`;
     await DB.set(key,data);
